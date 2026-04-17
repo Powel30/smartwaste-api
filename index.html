@@ -1,1 +1,484 @@
- index.html
+ <!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SmartWaste Monitor — Kyambogo University</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  /* ── Reset & base ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:      #05080f;
+    --surface: #0c1219;
+    --panel:   #101922;
+    --border:  #172333;
+    --accent:  #00c8ff;
+    --accent2: #00ffb3;
+    --warn:    #ffb020;
+    --danger:  #ff3d57;
+    --ok:      #00e87a;
+    --muted:   #3d5a72;
+    --text:    #d4e5f0;
+    --dim:     #5a7a90;
+    --font:    'DM Mono', 'Courier New', monospace;
+    --display: 'Syne', sans-serif;
+  }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 13px; }
+  ::-webkit-scrollbar { width: 3px; height: 3px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* ── Scanline overlay ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; pointer-events: none; z-index: 9999;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,200,255,0.012) 2px, rgba(0,200,255,0.012) 4px);
+  }
+
+  /* ── Layout ── */
+  header {
+    position: sticky; top: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px; height: 54px;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+  }
+  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo-icon {
+    width: 34px; height: 34px; border-radius: 8px;
+    background: rgba(0,200,255,.12); border: 1px solid rgba(0,200,255,.3);
+    display: flex; align-items: center; justify-content: center; font-size: 17px;
+  }
+  .logo-title { font-family: var(--display); font-weight: 800; font-size: 14px; letter-spacing: .4px; }
+  .logo-sub { font-size: 9px; color: var(--dim); letter-spacing: 1.4px; margin-top: 1px; }
+  nav { display: flex; gap: 3px; }
+  .nav-btn {
+    background: none; border: 1px solid transparent; cursor: pointer;
+    font-family: var(--font); font-size: 10px; letter-spacing: 1px;
+    color: var(--dim); padding: 6px 14px; border-radius: 5px;
+    transition: all .2s; position: relative;
+  }
+  .nav-btn.active { color: var(--accent); background: rgba(0,200,255,.1); border-color: rgba(0,200,255,.25); }
+  .nav-btn:hover:not(.active) { color: var(--text); background: rgba(255,255,255,.04); }
+  .badge-dot {
+    position: absolute; top: 4px; right: 4px;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--danger); box-shadow: 0 0 6px var(--danger);
+  }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  .live-time { font-family: var(--display); font-size: 12px; color: var(--accent); text-align: right; }
+  .live-date { font-size: 9px; color: var(--dim); }
+  .pulse-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    animation: blink 2s infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+  /* ── Alert bar ── */
+  #alert-bar {
+    display: none; padding: 6px 24px;
+    background: rgba(255,61,87,.1); border-bottom: 1px solid rgba(255,61,87,.25);
+    font-size: 10px; overflow-x: auto; white-space: nowrap;
+    display: flex; gap: 18px; align-items: center;
+  }
+  .alert-label { color: var(--danger); font-weight: 700; letter-spacing: 1px; flex-shrink: 0; }
+
+  /* ── Main content ── */
+  main { padding: 18px 24px; display: flex; flex-direction: column; gap: 16px; }
+  .view { display: none; flex-direction: column; gap: 16px; }
+  .view.active { display: flex; }
+
+  /* ── KPI grid ── */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; }
+  @media(max-width:700px){ .kpi-grid { grid-template-columns: repeat(2,1fr); } }
+  .kpi {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; display: flex; flex-direction: column; gap: 5px;
+    animation: fadeUp .4s ease forwards;
+  }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+  .kpi-label { font-size: 9px; color: var(--dim); letter-spacing: 1.3px; font-weight: 600; }
+  .kpi-value { font-family: var(--display); font-size: 28px; font-weight: 700; line-height: 1; }
+  .kpi-sub { font-size: 9px; color: var(--muted); }
+
+  /* ── Two-col layout ── */
+  .two-col { display: grid; grid-template-columns: 1.15fr 1fr; gap: 14px; }
+  @media(max-width:800px){ .two-col { grid-template-columns: 1fr; } }
+  .two-col-equal { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media(max-width:800px){ .two-col-equal { grid-template-columns: 1fr; } }
+
+  /* ── Panel ── */
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden; animation: fadeUp .4s ease forwards;
+  }
+  .panel-head {
+    padding: 11px 16px; border-bottom: 1px solid var(--border);
+    font-size: 9px; color: var(--dim); letter-spacing: 1.3px; font-weight: 700;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .panel-body { padding: 14px 16px; }
+
+  /* ── Table ── */
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    padding: 7px 12px; text-align: left;
+    font-size: 9px; color: var(--muted); font-weight: 600; letter-spacing: .5px;
+    border-bottom: 1px solid var(--border);
+  }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background .15s; cursor: pointer; }
+  tbody tr:hover, tbody tr.selected { background: rgba(0,200,255,.06); }
+  tbody td { padding: 9px 12px; font-size: 11px; }
+
+  /* ── Fill bar ── */
+  .fill-wrap { display: flex; align-items: center; gap: 7px; min-width: 100px; }
+  .fill-track { flex: 1; height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .fill-bar { height: 100%; border-radius: 3px; transition: width .8s cubic-bezier(.4,0,.2,1); }
+  .fill-pct { font-size: 11px; font-weight: 700; min-width: 30px; }
+
+  /* ── Badge ── */
+  .badge {
+    display: inline-block; font-size: 9px; font-weight: 700;
+    letter-spacing: 1.1px; padding: 2px 7px; border-radius: 3px;
+  }
+
+  /* ── Gauge ── */
+  .gauge-wrap { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+  .gauge-svg { flex-shrink: 0; }
+  .gauge-stats { flex: 1; display: flex; flex-direction: column; gap: 9px; }
+  .stat-row { display: flex; justify-content: space-between; font-size: 11px; }
+  .stat-label { color: var(--dim); }
+  .stat-val { font-weight: 700; }
+
+  /* ── Chart containers ── */
+  .chart-box { position: relative; height: 180px; }
+
+  /* ── Alert cards ── */
+  .alert-card {
+    border-radius: 10px; padding: 16px 20px;
+    background: var(--panel); animation: fadeUp .35s ease forwards;
+  }
+  .alert-title { font-family: var(--display); font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+  .alert-sub { font-size: 10px; color: var(--dim); }
+  .alert-action {
+    margin-top: 10px; padding: 9px 12px; border-radius: 6px;
+    font-size: 11px; border-left-width: 3px; border-left-style: solid;
+  }
+
+  /* ── API box ── */
+  .api-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px 20px;
+  }
+  .api-box pre {
+    font-size: 10px; color: var(--accent2); line-height: 1.8;
+    overflow-x: auto; white-space: pre;
+  }
+
+  /* ── Footer ── */
+  footer {
+    border-top: 1px solid var(--border); padding: 10px 0;
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;
+    font-size: 9px; color: var(--muted); letter-spacing: .4px;
+  }
+
+  /* ── ML table ── */
+  .ml-table td { font-size: 10px; }
+
+  /* ── No alerts ── */
+  .no-alerts {
+    background: var(--panel); border: 1px solid rgba(0,232,122,.2);
+    border-radius: 10px; padding: 24px; text-align: center;
+    color: var(--ok); font-size: 14px;
+  }
+
+  /* ── Spinner ── */
+  .spinner {
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">♻</div>
+    <div>
+      <div class="logo-title">SmartWaste Monitor</div>
+      <div class="logo-sub">KYAMBOGO UNIVERSITY · CAPSTONE 2024/25</div>
+    </div>
+  </div>
+  <nav>
+    <button class="nav-btn active" onclick="switchView('overview')">OVERVIEW</button>
+    <button class="nav-btn" onclick="switchView('analytics')">ANALYTICS</button>
+    <button class="nav-btn" id="alerts-btn" onclick="switchView('alerts')">
+      ALERTS
+      <span class="badge-dot" id="alert-dot" style="display:none"></span>
+    </button>
+  </nav>
+  <div class="header-right">
+    <div>
+      <div class="live-time" id="clock">--:--:--</div>
+      <div class="live-date" id="datestamp"></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:5px;font-size:10px">
+      <div class="pulse-dot" id="status-dot" style="background:var(--warn)"></div>
+      <span id="status-label" style="color:var(--dim)">CONNECTING</span>
+    </div>
+  </div>
+</header>
+
+<!-- ── Alert ticker ── -->
+<div id="alert-bar"></div>
+
+<main>
+
+  <!-- ════ OVERVIEW ════ -->
+  <div class="view active" id="view-overview">
+
+    <!-- KPIs -->
+    <div class="kpi-grid" id="kpi-grid">
+      <div class="kpi"><div class="kpi-label">AVG FILL LEVEL</div><div class="kpi-value" id="kpi-fill" style="color:var(--ok)">--</div><div class="kpi-sub">across all 6 nodes</div></div>
+      <div class="kpi"><div class="kpi-label">CRITICAL BINS</div><div class="kpi-value" id="kpi-crit" style="color:var(--ok)">--</div><div class="kpi-sub" id="kpi-crit-sub">-- high-risk</div></div>
+      <div class="kpi"><div class="kpi-label">MAX GAS MQ-2</div><div class="kpi-value" id="kpi-gas" style="color:var(--text)">--</div><div class="kpi-sub">ppm reading</div></div>
+      <div class="kpi"><div class="kpi-label">AVG TEMPERATURE</div><div class="kpi-value" id="kpi-temp" style="color:var(--text)">--</div><div class="kpi-sub">DHT22 sensors</div></div>
+    </div>
+
+    <div class="two-col">
+      <!-- Bin table -->
+      <div class="panel">
+        <div class="panel-head">BIN NODE STATUS — REAL-TIME <span id="last-update" style="color:var(--muted)"></span></div>
+        <div style="overflow-x:auto">
+          <table id="bin-table">
+            <thead>
+              <tr>
+                <th></th><th>NODE</th><th>WARD</th><th>TYPE</th>
+                <th>FILL</th><th>STATUS</th><th>ML ETA</th>
+              </tr>
+            </thead>
+            <tbody id="bin-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Detail panel -->
+      <div class="panel" id="detail-panel">
+        <div class="panel-head">
+          <div>
+            <span id="det-title" style="font-family:var(--display);font-weight:700;font-size:13px;color:var(--text)">Select a bin</span>
+            <div id="det-type" style="font-size:9px;color:var(--dim);margin-top:2px"></div>
+          </div>
+          <span id="det-badge"></span>
+        </div>
+        <div class="panel-body">
+          <div class="gauge-wrap">
+            <svg class="gauge-svg" viewBox="0 0 100 100" width="78" height="78">
+              <circle cx="50" cy="50" r="36" fill="none" stroke="var(--border)" stroke-width="8"/>
+              <circle id="gauge-arc" cx="50" cy="50" r="36" fill="none" stroke="var(--ok)"
+                stroke-width="8" stroke-linecap="round"
+                stroke-dasharray="0 226.2" stroke-dashoffset="56.5"
+                style="transition:all .8s ease;filter:drop-shadow(0 0 6px var(--ok))"/>
+              <text id="gauge-text" x="50" y="55" text-anchor="middle"
+                fill="var(--ok)" font-size="16" font-weight="700" font-family="Syne,sans-serif">0%</text>
+            </svg>
+            <div class="gauge-stats">
+              <div class="stat-row"><span class="stat-label">GAS (MQ-2)</span><span class="stat-val" id="det-gas" style="color:var(--text)">--</span></div>
+              <div class="stat-row"><span class="stat-label">TEMPERATURE</span><span class="stat-val" id="det-temp" style="color:var(--text)">--</span></div>
+              <div class="stat-row"><span class="stat-label">WEIGHT</span><span class="stat-val" id="det-weight" style="color:var(--text)">--</span></div>
+              <div class="stat-row"><span class="stat-label">TIME TO FULL</span><span class="stat-val" id="det-eta" style="color:var(--ok)">--</span></div>
+            </div>
+          </div>
+          <div style="font-size:9px;color:var(--dim);letter-spacing:1px;margin-bottom:8px">FILL TREND (24h)</div>
+          <div class="chart-box"><canvas id="fill-chart"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ ANALYTICS ════ -->
+  <div class="view" id="view-analytics">
+    <div class="two-col-equal">
+      <div class="panel">
+        <div class="panel-head">ENVIRONMENTAL SENSORS — 24h</div>
+        <div class="panel-body"><div class="chart-box"><canvas id="env-chart"></canvas></div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head">WEEKLY WASTE VOLUME BY TYPE (kg)</div>
+        <div class="panel-body"><div class="chart-box"><canvas id="weekly-chart"></canvas></div></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">ML PREDICTION TABLE — RANDOM FOREST + GRADIENT BOOSTING</div>
+      <div style="overflow-x:auto">
+        <table class="ml-table" id="ml-table">
+          <thead>
+            <tr>
+              <th>BIN</th><th>WARD</th><th>FILL %</th><th>GAS ppm</th>
+              <th>TEMP °C</th><th>ML η (h)</th><th>RISK</th><th>ACTION</th>
+            </tr>
+          </thead>
+          <tbody id="ml-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ ALERTS ════ -->
+  <div class="view" id="view-alerts">
+    <div style="font-size:9px;color:var(--dim);letter-spacing:1.2px" id="alerts-count">ACTIVE ALERTS — 0 requiring attention</div>
+    <div id="alerts-list"></div>
+    <div class="api-box">
+      <div style="font-size:9px;color:var(--dim);letter-spacing:1.2px;margin-bottom:10px;font-weight:700">
+        CLOUD API — ESP32 GATEWAY ENDPOINT
+      </div>
+      <pre id="api-pre">POST https://smartwaste-api-1.onrender.com/api/ingest
+Content-Type: application/json
+
+{
+  "bin_id":      "BIN-01",
+  "distance_cm": 32.5,
+  "temp_c":      24.3,
+  "gas_ppm":     280,
+  "weight_kg":   3.2
+}
+
+Response:
+{
+  "status":        "ok",
+  "fill_pct":      67.5,
+  "hours_to_full": 4.2,
+  "risk":          "HIGH"
+}</pre>
+    </div>
+  </div>
+
+  <footer>
+    <span>Ssekamatte Powel Kelly · 23/U/BIE/2640/PE · Mechatronics &amp; Biomedical Eng.</span>
+    <span>Supervisor: Mr. Okello Wayne · Teammates: Wasswa Kenneth · Musaasizi Isaac</span>
+    <span>ESP32 + ESP-NOW + Flask + RF/GB ML · Kyambogo University</span>
+  </footer>
+
+</main>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   CONFIG
+═══════════════════════════════════════════════════════════════ */
+const API_URL   = 'https://smartwaste-api-1.onrender.com';
+const POLL_MS   = 6000;
+const DEMO_MODE = true; // set false when API is confirmed live
+
+/* ═══════════════════════════════════════════════════════════════
+   DATA
+═══════════════════════════════════════════════════════════════ */
+const BIN_CFG = [
+  {id:'BIN-01',ward:'ICU',       type:'Infectious', cap:100, icon:'🔴'},
+  {id:'BIN-02',ward:'Surgery',   type:'Sharps',     cap:60,  icon:'🟡'},
+  {id:'BIN-03',ward:'Pharmacy',  type:'Chemical',   cap:80,  icon:'🟠'},
+  {id:'BIN-04',ward:'General',   type:'General',    cap:120, icon:'🟢'},
+  {id:'BIN-05',ward:'Radiology', type:'Radioactive',cap:40,  icon:'☢️'},
+  {id:'BIN-06',ward:'Paediatric',type:'Infectious', cap:80,  icon:'🔵'},
+];
+
+let bins = BIN_CFG.map((b,i) => ({
+  ...b,
+  fill_pct:      [72,45,88,31,15,60][i],
+  temp:          22 + i * 0.5,
+  gas_ppm:       120 + i * 30,
+  weight_kg:     i * 1.5,
+  hours_to_full: [4.2,14.1,1.8,22.5,48,12.3][i],
+  risk:          ['HIGH','MEDIUM','CRITICAL','LOW','LOW','MEDIUM'][i],
+}));
+
+let selectedBin = 0;
+
+function simTick() {
+  bins = bins.map(b => {
+    const f = Math.min(100, Math.max(0, b.fill_pct + (Math.random() - 0.28) * 2.2));
+    const g = Math.max(80, b.gas_ppm + (Math.random() - 0.5) * 18);
+    const t = +(b.temp + (Math.random() - 0.5) * 0.3).toFixed(1);
+    const rate = Math.max(0.5, (g / 500) * 4);
+    const h = +(Math.max(0, (100 - f) / rate)).toFixed(1);
+    const risk = h < 4 ? 'CRITICAL' : h < 12 ? 'HIGH' : h < 24 ? 'MEDIUM' : 'LOW';
+    return {...b, fill_pct: +f.toFixed(1), gas_ppm: +g.toFixed(0), temp: t, hours_to_full: h, risk};
+  });
+}
+
+function makeHistory() {
+  const now = Date.now();
+  return Array.from({length: 24}, (_, i) => ({
+    time:     new Date(now - (23 - i) * 3600000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),
+    fill_pct: Math.round(20 + Math.random() * 70),
+    gas_ppm:  Math.round(100 + Math.random() * 400),
+    temp:     +(21 + Math.random() * 8).toFixed(1),
+  }));
+}
+
+const DAILY = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => ({
+  day: d,
+  infectious: Math.round(15 + Math.random() * 35),
+  sharps:     Math.round(5  + Math.random() * 20),
+  chemical:   Math.round(8  + Math.random() * 25),
+  general:    Math.round(25 + Math.random() * 55),
+}));
+
+let history = makeHistory();
+
+/* ═══════════════════════════════════════════════════════════════
+   HELPERS
+═══════════════════════════════════════════════════════════════ */
+const riskColor = r => ({CRITICAL:'#ff3d57',HIGH:'#ffb020',MEDIUM:'#00c8ff',LOW:'#00e87a'}[r] || '#3d5a72');
+const fillColor = f => f >= 80 ? '#ff3d57' : f >= 50 ? '#ffb020' : '#00e87a';
+
+function badge(label, color) {
+  return `<span class="badge" style="background:${color}1a;color:${color};border:1px solid ${color}44">${label}</span>`;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CLOCK
+═══════════════════════════════════════════════════════════════ */
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent = now.toLocaleTimeString();
+  document.getElementById('datestamp').textContent = now.toLocaleDateString();
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+/* ═══════════════════════════════════════════════════════════════
+   VIEWS
+═══════════════════════════════════════════════════════════════ */
+function switchView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  event.currentTarget.classList.add('active');
+  if (name === 'analytics') renderAnalytics();
+  if (name === 'alerts')    renderAlerts();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   BIN TABLE
+═══════════════════════════════════════════════════════════════ */
+function renderBinTable() {
+  const tbody = document.getElementById('bin-tbody');
+  tbody.innerHTML = bins.map((b, i) => {
+    const fc = fillColor(b.fill_pct);
+    return `<tr class="${i === selectedBin ? 'selected' : ''}" onclick="selectBin(${i})">
+      <td>${b.icon}</td>
+      <td style="color:var(--accent);font-weight:700">${b.bin_id}</td>
+      <td>${b.ward}</td>
+      <td style="color:var(--dim);font-size:10px">${b.type}</td>
+      <td>
+        <div class="fill-wrap">
+          <div class="fill-track">
+            <div class="fill-bar" style="width:${b.fill_pct}%;background:${fc};box-shadow:0 0 6px ${fc}88"></div>
+          </div>
+          <span class="fill-pct" style="color:${fc}">${b.fill_pct}%</span>
+        </div>
+    
